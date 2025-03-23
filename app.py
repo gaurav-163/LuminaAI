@@ -5,10 +5,9 @@ from torchvision import transforms
 import numpy as np
 
 # Load pre-trained models (pix2pix and SRGAN)
-#dev
 def load_pix2pix_model():
     # Load your pre-trained pix2pix model here
-    # Example: model = torch.load('path_to_pix2pix_model.pth')
+    model = torch.load('pix2pix_model.pth')
     # model.eval()
     return None  # Placeholder
 
@@ -20,6 +19,13 @@ def load_srgan_model():
 
 # Preprocess and upscale image
 def upscale_image(model, image, model_type):
+    # Convert image to RGB if it's not already
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+
+    # Print debug information
+    st.write(f"Original Image Size: {image.size}, Mode: {image.mode}")
+
     # Preprocess the image
     if model_type == "pix2pix":
         transform = transforms.Compose([
@@ -27,13 +33,19 @@ def upscale_image(model, image, model_type):
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # Normalize for pix2pix
         ])
-    elif model_type == "srgan":
+    elif model_type == "SRGAN":
         transform = transforms.Compose([
             transforms.Resize((256, 256)),  # Resize to the input size expected by SRGAN
             transforms.ToTensor(),
         ])
 
-    image_tensor = transform(image).unsqueeze(0)
+    # Apply transformations
+    try:
+        image_tensor = transform(image).unsqueeze(0)
+        st.write(f"Image Tensor Shape: {image_tensor.shape}")
+    except Exception as e:
+        st.error(f"Error during transformation: {e}")
+        return None
 
     # Perform upscaling
     with torch.no_grad():
@@ -42,7 +54,7 @@ def upscale_image(model, image, model_type):
     # Post-process the output
     if model_type == "pix2pix":
         upscaled_image = (upscaled_image.squeeze(0).permute(1, 2, 0).cpu().numpy() + 1) / 2.0  # Denormalize
-    elif model_type == "srgan":
+    elif model_type == "SRGAN":
         upscaled_image = upscaled_image.squeeze(0).permute(1, 2, 0).cpu().numpy()
 
     upscaled_image = (upscaled_image * 255).astype(np.uint8)
@@ -73,7 +85,8 @@ def main():
             elif model_type == "SRGAN":
                 upscaled_image = upscale_image(srgan_model, image, model_type)
 
-            st.image(upscaled_image, caption=f'Upscaled Image ({model_type})', use_column_width=True)
+            if upscaled_image is not None:
+                st.image(upscaled_image, caption=f'Upscaled Image ({model_type})', use_column_width=True)
 
 if __name__ == "__main__":
     main()
