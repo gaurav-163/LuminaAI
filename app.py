@@ -1,92 +1,51 @@
 import streamlit as st
+from diffusers import StableDiffusionInstructPix2PixPipeline
 from PIL import Image
 import torch
-from torchvision import transforms
-import numpy as np
+import base64
+import os
 
-# Load pre-trained models (pix2pix and SRGAN)
-def load_pix2pix_model():
-    # Load your pre-trained pix2pix model here
-    model = torch.load('pix2pix_model.pth')
-    # model.eval()
-    return None  # Placeholder
+# Load the model
+@st.cache_resource
+def load_model():
+    model = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+        "timbrooks/instruct-pix2pix",
+        torch_dtype=torch.float16
+    ).to("cuda" if torch.cuda.is_available() else "cpu")
+    return model
 
-def load_srgan_model():
-    # Load your pre-trained SRGAN model here
-    # Example: model = torch.load('path_to_srgan_model.pth')
-    # model.eval()
-    return None  # Placeholder
+model = load_model()
 
-# Preprocess and upscale image
-def upscale_image(model, image, model_type):
-    # Convert image to RGB if it's not already
-    if image.mode != "RGB":
-        image = image.convert("RGB")
-
-    # Print debug information
-    st.write(f"Original Image Size: {image.size}, Mode: {image.mode}")
-
-    # Preprocess the image
-    if model_type == "pix2pix":
-        transform = transforms.Compose([
-            transforms.Resize((256, 256)),  # Resize to the input size expected by pix2pix
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # Normalize for pix2pix
-        ])
-    elif model_type == "SRGAN":
-        transform = transforms.Compose([
-            transforms.Resize((256, 256)),  # Resize to the input size expected by SRGAN
-            transforms.ToTensor(),
-        ])
-
-    # Apply transformations
-    try:
-        image_tensor = transform(image).unsqueeze(0)
-        st.write(f"Image Tensor Shape: {image_tensor.shape}")
-    except Exception as e:
-        st.error(f"Error during transformation: {e}")
-        return None
-
-    # Perform upscaling
-    with torch.no_grad():
-        upscaled_image = model(image_tensor)
-
-    # Post-process the output
-    if model_type == "pix2pix":
-        upscaled_image = (upscaled_image.squeeze(0).permute(1, 2, 0).cpu().numpy() + 1) / 2.0  # Denormalize
-    elif model_type == "SRGAN":
-        upscaled_image = upscaled_image.squeeze(0).permute(1, 2, 0).cpu().numpy()
-
-    upscaled_image = (upscaled_image * 255).astype(np.uint8)
-    upscaled_image = Image.fromarray(upscaled_image)
-
-    return upscaled_image
+def encode_image(image_path):
+    with open(image_path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode()
 
 def main():
-    st.title("Image Upscaler GAN")
+    st.title("InstructPix2Pix Image Editor")
+    run_app()
 
-    # Load models
-    pix2pix_model = load_pix2pix_model()
-    srgan_model = load_srgan_model()
-
-    # Model selection
-    model_type = st.radio("Select Model", ("pix2pix", "SRGAN"))
-
-    # Upload an image
+def run_app():
+    st.subheader("Upload an Image and Provide an Instruction")
     uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+    instruction = st.text_input("Enter an instruction for modification", "Make it look like a painting").strip()
+    
     if uploaded_file is not None:
-        image = Image.open(uploaded_file)
-        st.image(image, caption='Original Image', use_column_width=True)
-
-        # Upscale the image
-        if st.button('Upscale'):
-            if model_type == "pix2pix":
-                upscaled_image = upscale_image(pix2pix_model, image, model_type)
-            elif model_type == "SRGAN":
-                upscaled_image = upscale_image(srgan_model, image, model_type)
-
-            if upscaled_image is not None:
-                st.image(upscaled_image, caption=f'Upscaled Image ({model_type})', use_column_width=True)
+        image = Image.open(uploaded_file).convert("RGB")
+        st.image(image, caption="Uploaded Image", use_column_width=True)
+        
+        if st.button("Generate Image"):
+            if not instruction:
+                st.error("Please enter an instruction for modification.")
+                return
+            
+            with st.spinner("Processing..."):
+                processed_image = model(prompt=instruction, image=image).images[0]  # ✅ Pass as a named parameter
+                st.image(processed_image, caption="Modified Image", use_column_width=True)
+                
+                # Save and provide download link
+                output_path = "output.png"
+                processed_image.save(output_path)
+                st.markdown(f'<a href="data:file/png;base64,{encode_image(output_path)}" download="modified_image.png">Download Image</a>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()

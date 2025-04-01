@@ -15,9 +15,16 @@ This project uses the **Instruct-Pix2Pix** model from Hugging Face (`timbrooks/i
 
 ---
 
-## 🛠️ Requirements
+## 🛠️ Getting started With
 Before running the project, make sure you have the following packages installed:
 
+```bash
+Poetry install
+```
+step 2:- 
+```bash
+streamlit run app.py
+```
 
 ---
 
